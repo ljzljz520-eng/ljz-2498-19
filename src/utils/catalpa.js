@@ -1,27 +1,32 @@
-function escapeHtml(text) {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
+// Catalpa Markdown 渲染（最小安全子集）。
+// 安全模型：所有文本节点先 HTML 转义；链接 href 走 URL 安全校验 + 属性转义（与文本上下文不同）。
+
+import { escapeHtmlText } from '../shared/template.js'
+
+export function escapeHtml(text) {
+  return escapeHtmlText(text)
+}
+
+function safeHref(url) {
+  const raw = String(url)
+  if (/^\s*javascript:/i.test(raw) || /^\s*data:/i.test(raw) || /^\s*vbscript:/i.test(raw)) return '#blocked-url'
+  if (!/^(https?:\/\/|\/|#|mailto:)/i.test(raw)) return '#blocked-url'
+  return encodeURI(raw).replace(/'/g, '%27').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 function renderInline(text) {
+  // text 必须已经过 escapeHtml。链接的 URL 单独走 safeHref，不做文本式转义。
   return text
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/`([^`]+)`/g, (m, code) => `<code>${code}</code>`)
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, label, url) =>
+      `<a href="${safeHref(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`)
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
 }
 
 function listTagFor(line) {
-  if (/^\s*[-*+]\s+/.test(line)) {
-    return 'ul'
-  }
-  if (/^\s*\d+\.\s+/.test(line)) {
-    return 'ol'
-  }
+  if (/^\s*[-*+]\s+/.test(line)) return 'ul'
+  if (/^\s*\d+\.\s+/.test(line)) return 'ol'
   return ''
 }
 
@@ -35,22 +40,14 @@ export function renderCatalpa(source) {
   let i = 0
 
   while (i < lines.length) {
-    const rawLine = lines[i]
-    const line = rawLine.trimEnd()
-
-    if (line.trim() === '') {
-      i += 1
-      continue
-    }
+    const line = lines[i].trimEnd()
+    if (line.trim() === '') { i += 1; continue }
 
     if (/^```/.test(line.trim())) {
       const language = line.trim().slice(3).trim()
       i += 1
       const codeLines = []
-      while (i < lines.length && !/^```/.test(lines[i].trim())) {
-        codeLines.push(lines[i])
-        i += 1
-      }
+      while (i < lines.length && !/^```/.test(lines[i].trim())) { codeLines.push(lines[i]); i += 1 }
       i += 1
       const escaped = escapeHtml(codeLines.join('\n'))
       const langClass = language ? ` class="language-${language}"` : ''
@@ -87,11 +84,7 @@ export function renderCatalpa(source) {
     const currentListTag = listTagFor(line)
     if (currentListTag) {
       const listItems = []
-      while (i < lines.length) {
-        const nextTag = listTagFor(lines[i])
-        if (nextTag !== currentListTag) {
-          break
-        }
+      while (i < lines.length && listTagFor(lines[i]) === currentListTag) {
         const text = escapeHtml(stripListPrefix(lines[i].trim()))
         listItems.push(`<li>${renderInline(text)}</li>`)
         i += 1

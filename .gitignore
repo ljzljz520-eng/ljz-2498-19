@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# SQLite 数据文件（运行期产物）
+server/data/*.sqlite
+server/data/*.sqlite-*
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -22,3 +26,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# pnpm 本地 store 缓存
+.pnpm-store/
